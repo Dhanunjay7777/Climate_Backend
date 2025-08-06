@@ -7,9 +7,10 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: '*', credentials: true }));
 
-const PORT = process.env.PORT || 5000;
-// const MONGODB_URI = 'mongodb://localhost:27017';
-const MONGODB_URI = 'mongodb+srv://user_789:VE9p1IyV5RKPBkZi@final.qtxvndt.mongodb.net/?retryWrites=true&w=majority&appName=Final'; // Uncomment for Atlas
+
+const PORT = process.env.REACT_APP_PORT || 10000;
+// const MONGODB_URI = 'mongodb://localhost:27017'; // Use local MongoDB
+ const MONGODB_URI = process.env.REACT_APP_MONGO_URL;
 
 const client = new MongoClient(MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
