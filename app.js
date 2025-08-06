@@ -65,7 +65,17 @@ app.post('/register', async (req, res) => {
   }
 });
 
+   app.get('/users', async (req, res) => {
+  try {
+    const users = await db.collection('Consumers')
+      .find({}, { projection: { fullName: 1, email: 1, _id: 0 } })
+      .toArray();
 
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching users', error: error.message });
+  }
+});
 app.post('/login', async (req, res) => {
 //   console.log('Received Login:', req.body); // add this
 
