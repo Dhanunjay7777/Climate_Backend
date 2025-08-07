@@ -3,6 +3,9 @@ const cors = require('cors');
 const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const multer = require('multer');
+const path = require('path');
+const AWS = require('aws-sdk'); 
 
 const app = express();
 app.use(express.json());
@@ -12,6 +15,12 @@ const PORT = process.env.REACT_APP_PORT || 10000;
 const MONGODB_URI = process.env.REACT_APP_MONGO_URL;
 const redisClient = require('./redisClient');
 
+const s3 = new AWS.S3({
+  region: process.env.REACT_APP_AWS_REGION,
+  accessKeyId: process.env.REACT_APP_AWS_KEY,
+  secretAccessKey: process.env.REACT_APP_AWS_SECRET,
+  signatureVersion: 'v4'
+});
 const client = new MongoClient(MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
 });
@@ -28,6 +37,19 @@ async function connectToMongoDB() {
     process.exit(1);
   }
 }
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
 
 async function ensureUniqueIndexes() {
   try {
@@ -76,7 +98,124 @@ app.post('/register', async (req, res) => {
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
+app.post('/imageupload', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No image file provided'
+      });
+    }
 
+    const { userid, description } = req.body;
+    if (!userid) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+
+    // Generate filename
+    const randomDigits = Math.floor(100000 + Math.random() * 900000);
+    const timestamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
+    const fileExtension = path.extname(req.file.originalname) || '.jpg';
+    const fileName = `reports/${userid}_image${randomDigits}_${timestamp}${fileExtension}`;
+
+    // Authorize B2 and upload
+    const uploadParams = {
+      Bucket: 'myclimate789',
+      Key: fileName,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype,
+    };
+
+    const uploadResult = await s3.upload(uploadParams).promise();
+    console.log('S3 upload successful:', uploadResult.Location);
+
+    const imageUrl = uploadResult.Location;
+
+    const reportsCollection = db.collection('reports');
+    const existingReport = await reportsCollection.findOne({ imageurl: imageUrl });
+    
+    if (existingReport) {
+      try {
+        await s3.deleteObject({
+          Bucket: 'myclimate789',
+          Key: fileName
+        }).promise();
+        console.log('Duplicate file removed from S3:', fileName);
+      } catch (deleteError) {
+        console.error('Error removing duplicate file from S3:', deleteError);
+      }
+      
+      return res.status(409).json({
+        success: false,
+        error: 'Duplicate image URL detected. This image has already been uploaded.',
+        existingReport: {
+          reportId: existingReport._id,
+          uploadedAt: existingReport.raisedat
+        }
+      });
+    }
+
+    // Save to MongoDB only if no duplicate found
+    const reportData = {
+      userid: userid,
+      description: description || '',
+      imageurl: imageUrl,
+      raisedat: new Date(),
+      filename: fileName,
+      filesize: req.file.size,
+      mimetype: req.file.mimetype,
+      s3Key: fileName
+    };
+
+    const mongoResult = await reportsCollection.insertOne(reportData);
+
+    // Simple success response
+    res.status(200).json({
+      success: true,
+      message: 'Climate report uploaded successfully',
+      data: {
+        reportId: mongoResult.insertedId,
+        imageUrl: imageUrl,
+        userid: userid,
+        description: description || '',
+        uploadedAt: reportData.raisedat
+      }
+    });
+
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Upload failed',
+      details: error.message
+    });
+  }
+});
+
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        error: 'File too large. Maximum size is 10MB'
+      });
+    }
+  }
+  if (error.message === 'Only image files are allowed!') {
+    return res.status(400).json({
+      success: false,
+      error: 'Only image files are allowed'
+    });
+  }
+  
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error'
+  });
+});
 app.post('/login', async (req, res) => {
   try {
     const users = db.collection('Consumers');
