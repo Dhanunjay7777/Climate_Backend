@@ -343,6 +343,62 @@ app.get('/userfromsession/:sessionKey', async (req, res) => {
   }
 });
 
+app.post('/password/change', async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) {
+      return res.status(400).json({ 
+        message: 'Current password and new password are required.' 
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ 
+        message: 'New password must be at least 8 characters long.' 
+      });
+    }
+ const userId = req.user?.userid || req.body.userid; 
+    if (!userId) {
+      return res.status(401).json({ message: 'User ID required. Please login again.' });
+    }
+    const users = db.collection('Consumers');
+    const user = await users.findOne({ userid: userId });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({ message: 'Current password is incorrect.' });
+    }
+    const saltRounds = 12;
+    const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
+    const updateResult = await users.updateOne(
+      { userid: userId },
+      { 
+        $set: { 
+          password: hashedNewPassword,
+          passwordChangedAt: new Date()
+        }
+      }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.status(500).json({ message: 'Failed to update password.' });
+    }
+
+    // Success response
+    res.status(200).json({ 
+      message: 'Password changed successfully!',
+      success: true 
+    });
+    } catch (error) {
+    console.error('Password change error:', error);
+    res.status(500).json({ 
+      message: 'Internal server error. Please try again later.' 
+    });
+  }
+});
+
 // Profile update endpoint
 app.put('/updateprofile', async (req, res) => {
   try {
