@@ -16,7 +16,7 @@ const MONGODB_URI = process.env.REACT_APP_MONGO_URL;
 const redisClient = require('./redisClient');
 
 const s3 = new AWS.S3({
-  region: process.env.REACT_APP_AWS_REGION,
+  region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
   accessKeyId: process.env.REACT_APP_AWS_KEY,
   secretAccessKey: process.env.REACT_APP_AWS_SECRET,
   signatureVersion: 'v4'
