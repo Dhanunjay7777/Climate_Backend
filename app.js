@@ -37,6 +37,7 @@ async function connectToMongoDB() {
     process.exit(1);
   }
 }
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -50,6 +51,7 @@ const upload = multer({
     }
   }
 });
+
 
 async function ensureUniqueIndexes() {
   try {
@@ -216,6 +218,7 @@ app.use((error, req, res, next) => {
     error: 'Internal server error'
   });
 });
+
 app.post('/login', async (req, res) => {
   try {
     const users = db.collection('Consumers');
@@ -264,6 +267,8 @@ app.post('/login', async (req, res) => {
     res.json({
       message: 'Login successful',
       sessionKey,
+      userid:user.userid,
+      name:user.name,
       success: true
     });
   } catch (err) {
@@ -475,3 +480,4 @@ startServer().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+
